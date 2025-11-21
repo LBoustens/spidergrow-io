@@ -1,10 +1,13 @@
 // game.js
 // --------------------------------------------------
-// Client du jeu SpiderGrow.io
+// Client du jeu SpiderGrow.io (optimisé anti-lag)
 // --------------------------------------------------
 
-// Connexion Socket.IO
-const socket = io();
+// ⚡ Connexion Socket.IO : on force le WebSocket
+const socket = io({
+  transports: ["websocket"],
+  upgrade: false
+});
 
 let myId = null;
 let mapInfo = null;
@@ -48,7 +51,6 @@ function submitName() {
   // Envoi au serveur
   socket.emit("setName", playerName);
 
-  // On ferme l'overlay et on autorise le mouvement
   nameOverlay.style.display = "none";
   nameError.textContent = "";
   canMove = true;
@@ -81,8 +83,16 @@ socket.on("init", (data) => {
   mapInfo = data.map;
 });
 
+// ⚡ On accepte maintenant un état partiel : parfois seulement players,
+// parfois players + pellets (pour réduire le trafic).
 socket.on("state", (serverState) => {
-  state = serverState;
+  if (serverState.players) {
+    state.players = serverState.players;
+  }
+  if (serverState.pellets) {
+    state.pellets = serverState.pellets;
+  }
+
   const me = state.players[myId];
 
   if (me) {
@@ -166,7 +176,7 @@ class SpiderScene extends Phaser.Scene {
     // On essaie de charger les sons, mais s'ils n'existent pas
     // on ne les utilisera pas (pas de crash).
     this.load.audio("ambience", "assets/ambience.mp3");
-    this.load.audio("eat", "assets/eat.mp3"); // ⭐ eat.mp3
+    this.load.audio("eat", "assets/eat.mp3");
   }
 
   create() {
@@ -185,7 +195,7 @@ class SpiderScene extends Phaser.Scene {
 
     // Contrôles clavier
     this.cursors = this.input.keyboard.createCursorKeys();
-    // ⭐ ZQSD (clavier FR)
+    // ZQSD (clavier FR)
     this.keysZQSD = this.input.keyboard.addKeys("Z,Q,S,D");
 
     // Touche M pour mute
@@ -267,8 +277,7 @@ class SpiderScene extends Phaser.Scene {
       let vx = 0;
       let vy = 0;
 
-      // ⭐ Adaptation ZQSD :
-      // Q = gauche, D = droite, Z = haut, S = bas
+      // ZQSD + flèches
       if (this.cursors.left.isDown || this.keysZQSD.Q.isDown) vx -= 1;
       if (this.cursors.right.isDown || this.keysZQSD.D.isDown) vx += 1;
       if (this.cursors.up.isDown || this.keysZQSD.Z.isDown) vy -= 1;

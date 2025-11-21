@@ -1,6 +1,10 @@
 // server.js
 // --------------------------------------------------
-// Serveur du jeu SpiderGrow.io
+// Serveur du jeu SpiderGrow.io (optimisé anti-lag)
+// - Express + Socket.IO
+// - Tick serveur 20 FPS
+// - Envoi "pellets" moins fréquent pour réduire le trafic
+// - Colisions joueurs corrigées (bordures / kill)
 // --------------------------------------------------
 
 import express from "express";
@@ -10,10 +14,13 @@ import { Server } from "socket.io";
 const app = express();
 const httpServer = createServer(app);
 
+// ⚡ Socket.IO : on force le WebSocket (meilleure latence sur Render)
 const io = new Server(httpServer, {
-  cors: { origin: "*" }
+  cors: { origin: "*" },
+  transports: ["websocket"] // on n'autorise que le websocket
 });
 
+// On sert les fichiers statiques (front) dans /public
 app.use(express.static("public"));
 
 // --------------------------------------------------
@@ -29,6 +36,9 @@ const MAX_PELLETS = 1200;
 const players = {};
 let pellets = [];
 
+// Compteur de ticks (sert pour envoyer moins souvent les pellets)
+let tick = 0;
+
 // --------------------------------------------------
 // Utilitaires
 // --------------------------------------------------
@@ -43,7 +53,7 @@ function randomPosition() {
   };
 }
 
-// Palette de couleurs "classique"
+// Palette de couleurs lisibles
 function randomColor() {
   const colors = ["#00e5ff", "#ffb300", "#ff4081", "#b388ff", "#69f0ae"];
   return colors[Math.floor(Math.random() * colors.length)];
@@ -79,6 +89,8 @@ function sanitizeName(rawName) {
 // Boucle de jeu
 // --------------------------------------------------
 function gameLoop() {
+  tick++;
+
   // 1) Joueur mange des pellets
   for (const [, player] of Object.entries(players)) {
     for (let i = pellets.length - 1; i >= 0; i--) {
@@ -93,7 +105,7 @@ function gameLoop() {
     }
   }
 
-  // 2) Joueur mange joueur
+  // 2) Joueur mange joueur (logique robuste même sur les bords)
   const ids = Object.keys(players);
   for (let i = 0; i < ids.length; i++) {
     for (let j = i + 1; j < ids.length; j++) {
@@ -101,9 +113,9 @@ function gameLoop() {
       const b = players[ids[j]];
       if (!a || !b) continue;
 
-      if (a.score === b.score) continue; // même score → pas de kill
+      if (a.score === b.score) continue; // même score -> pas de kill
 
-      // Le potentiel mangeur = celui qui a le plus de score
+      // Le plus gros en score = mangeur potentiel
       let eaterId = a.score > b.score ? ids[i] : ids[j];
       let preyId = eaterId === ids[i] ? ids[j] : ids[i];
 
@@ -115,30 +127,22 @@ function gameLoop() {
       const Re = eater.radius;
       const Rp = prey.radius;
 
-      // Si le "gros" n'est pas vraiment plus gros, on ne fait rien
+      // Il faut un vrai écart de taille
       if (Re <= Rp * 1.05) continue;
 
-      // --- Nouvelle logique de kill robuste, même sur les bords ---
-
-      // 1) Cas théorique : le petit est complètement dans le gros
+      // Cas théorique : le petit entièrement dans le gros
       const fullContain = d + Rp <= Re;
 
-      // 2) Cas pratique : gros recouvrement du centre du petit
-      //    -> le centre du petit doit être assez proche du centre du gros
-      //    0.9 * Rp = recouvrement fort ; à ajuster si tu veux plus / moins permissif
+      // Cas pratique : fort recouvrement (centre du petit bien "dans" le gros)
       const strongOverlap = d < Rp * 0.9;
 
-      // Si on n'est ni en containment ni en fort recouvrement → pas de kill
-      if (!fullContain && !strongOverlap) {
-        continue;
-      }
+      if (!fullContain && !strongOverlap) continue;
 
       // --- KILL ---
       const gained = Math.floor(prey.score * 0.5);
       eater.score += gained;
       eater.radius = INITIAL_RADIUS + eater.score * RADIUS_PER_POINT;
 
-      // Respawn de la proie (score 0, même pseudo & couleur)
       const pos = randomPosition();
       players[preyId] = {
         x: pos.x,
@@ -167,11 +171,19 @@ function gameLoop() {
     });
   }
 
-  // 4) Broadcast de l'état
-  io.emit("state", {
-    players,
-    pellets
-  });
+  // 4) Envoi de l'état au clients
+  // ⚡ Optimisation anti-lag :
+  //    - On envoie les joueurs à chaque tick (position & score = fluide)
+  //    - On envoie les pellets seulement 1 tick sur 4 (~5 fois/sec)
+  const payload = {
+    players
+  };
+
+  if (tick % 4 === 0) {
+    payload.pellets = pellets;
+  }
+
+  io.emit("state", payload);
 }
 
 // --------------------------------------------------
@@ -199,7 +211,7 @@ io.on("connection", (socket) => {
     const p = players[socket.id];
     if (!p) return;
 
-    // Clamp en tenant compte du rayon -> l'araignée reste entièrement dans la map
+    // On garde le joueur entièrement dans la map (bordures)
     const r = p.radius;
     p.x = Math.max(r, Math.min(MAP_WIDTH - r, data.x));
     p.y = Math.max(r, Math.min(MAP_HEIGHT - r, data.y));
@@ -219,9 +231,11 @@ io.on("connection", (socket) => {
 });
 
 // --------------------------------------------------
-// Lancement
+// Lancement serveur
 // --------------------------------------------------
 generateInitialPellets(MAX_PELLETS);
+
+// 20 FPS côté serveur (50 ms)
 setInterval(gameLoop, 50);
 
 const PORT = process.env.PORT || 3000;
