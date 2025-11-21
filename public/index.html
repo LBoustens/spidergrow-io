@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>SpiderGrow.io</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #111;
+      font-family: system-ui, sans-serif;
+      color: #fff;
+    }
+
+    #game-container {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* HUD commun (score + leaderboard) */
+    .hud {
+      position: fixed;
+      background: rgba(0,0,0,0.6);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #fff;
+      z-index: 10;
+    }
+
+    .hud-score {
+      top: 10px;
+      left: 10px;
+    }
+
+    .hud-leaderboard {
+      top: 10px;
+      right: 10px;
+      min-width: 160px;
+      max-width: 220px;
+      text-align: left;
+    }
+
+    .hud-leaderboard #leaderboard {
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .hud strong {
+      color: #5bf2ff; /* bien lisible sur fond sombre */
+    }
+
+    /* Overlay de choix de pseudo (écran de bienvenue) */
+    #name-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20; /* au-dessus du jeu et du HUD */
+    }
+
+    #name-panel {
+      background: #1b1b1b;
+      border-radius: 12px;
+      padding: 20px 24px;
+      max-width: 320px;
+      width: 90%;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+      text-align: center;
+    }
+
+    #name-panel h1 {
+      margin: 0 0 8px 0;
+      font-size: 22px;
+    }
+
+    #name-panel p {
+      font-size: 13px;
+      color: #ccc;
+      margin-bottom: 16px;
+    }
+
+    #playerNameInput {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #111;
+      color: #fff;
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+
+    #startButton {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: none;
+      background: #00b894;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    #startButton:disabled {
+      background: #555;
+      cursor: default;
+    }
+
+    #name-error {
+      color: #ff7675;
+      font-size: 12px;
+      min-height: 16px;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container"></div>
+
+  <!-- Score en haut à gauche -->
+  <div class="hud hud-score">
+    Score : <span id="score">0</span>
+  </div>
+
+  <!-- Leaderboard en haut à droite -->
+  <div class="hud hud-leaderboard">
+    <div id="leaderboard">
+      <strong>Top 10</strong><br />
+      Chargement...
+    </div>
+  </div>
+
+  <!-- Écran de choix du pseudo AVANT de jouer -->
+  <div id="name-overlay" aria-modal="true" role="dialog">
+    <div id="name-panel">
+      <h1>SpiderGrow.io</h1>
+      <p>Choisis ton pseudo avant d'entrer dans l'arène.</p>
+      <label for="playerNameInput" class="sr-only">Pseudo</label>
+      <input
+        id="playerNameInput"
+        type="text"
+        maxlength="20"
+        placeholder="Ton pseudo"
+        autocomplete="off"
+      />
+      <button id="startButton">Jouer</button>
+      <div id="name-error"></div>
+    </div>
+  </div>
+
+  <!-- Librairies -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Jeu -->
+  <script src="game.js"></script>
+</body>
+</html>
